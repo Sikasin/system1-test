@@ -168,6 +168,14 @@
         object-fit: cover;
         display: none;
       }
+      /* デモ表示用キャンバス（拡大した写真の切り取り範囲と検出枠を同じ面に描く） */
+      #demoCanvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: none;
+      }
       #overlay {
         position: absolute;
         inset: 0;
@@ -293,7 +301,7 @@
         <h2>使い方</h2>
         <ul>
           <li>「カメラではじめる」を押すと、カメラの許可ダイアログが出ます。許可すると、カメラに映った物をその場で探します</li>
-          <li>「デモで見る」は、カメラを使わず、サンプル写真で試す形です</li>
+          <li>「デモで見る」は、カメラを使わず、サンプル写真で試す形です。写真が拡大されてゆっくり動き、見えている範囲の物を探します</li>
           <li>画面の下には、検出にかかった時間（ミリ秒）と、見つけた物の数、1秒あたりの検出回数が出ます。端末の速さによって変わります</li>
           <li>AIの読み込みに少し時間がかかります。物によっては見つけられなかったり、間違えたりもします。それも含めて、今の「システム1」の実力です</li>
         </ul>
@@ -306,6 +314,7 @@
       <div id="stage">
         <video id="cam" playsinline muted autoplay></video>
         <img id="sampleImg" src="sample.jpg" alt="サンプル写真" />
+        <canvas id="demoCanvas"></canvas>
         <canvas id="overlay"></canvas>
         <button id="btnBack" type="button" aria-label="開始画面へもどる">＜ もどる</button>
         <button id="btnStop" type="button">停止</button>
@@ -373,6 +382,12 @@
       var fpsEma = 0;               // 検出回数/秒の平滑値
       var lastCycleAt = 0;
       var detectBusy = false;
+      /* デモ（ピンボール方式）の状態。pin は写真の中の「見えている窓」
+         （画像座標の x, y, w, h）と、1秒あたりの移動量 vx, vy */
+      var pin = null;
+      var demoRaf = 0;
+      var lastFrameAt = 0;
+      var cropCanvas = document.createElement('canvas');
 
       var $ = function (id) { return document.getElementById(id); };
       var startScreen = $('startScreen'), runView = $('runView');
@@ -410,10 +425,20 @@
          時刻の間隔から「1秒あたり何回検出できたか」を平滑化して出す */
       function detectLoop() {
         if (!running) return;
-        var src = mode === 'cam' ? video : sampleImg;
-        var ready = mode === 'cam'
-          ? (video.readyState >= 2 && video.videoWidth > 0)
-          : sampleReady;
+        var src = video;
+        var ready = false;
+        if (mode === 'cam') {
+          src = video;
+          ready = video.readyState >= 2 && video.videoWidth > 0;
+        } else if (mode === 'demo') {
+          /* デモは写真全体ではなく、今見えている窓（切り取り）だけを検出する */
+          ready = sampleReady && !!pin;
+          if (ready) {
+            var cctx = cropCanvas.getContext('2d');
+            cctx.drawImage(sampleImg, pin.x, pin.y, pin.w, pin.h, 0, 0, cropCanvas.width, cropCanvas.height);
+            src = cropCanvas;
+          }
+        }
         if (ready && model && !detectBusy) {
           detectBusy = true;
           var t0 = performance.now();
@@ -432,7 +457,8 @@
             for (var i = 0; i < preds.length; i++) {
               if (preds[i].score >= 0.5) predictions.push(preds[i]);
             }
-            drawOverlay();
+            /* デモの枠は毎フレームの描画（drawDemo）が担当する */
+            if (mode === 'cam') drawOverlay();
             updateStats();
           }).catch(function () {}).then(function () { detectBusy = false; });
         }
@@ -465,6 +491,88 @@
           var y = oy + p.bbox[1] * scale;
           var w = p.bbox[2] * scale;
           var h = p.bbox[3] * scale;
+          var label = jaLabel(p.class) + ' ' + Math.round(p.score * 100) + '%';
+          ctx.strokeStyle = '#ffb340';
+          ctx.strokeRect(x, y, w, h);
+          var tw = ctx.measureText(label).width;
+          var ly = y - 2 < 24 ? y + 24 : y - 2;
+          ctx.fillStyle = 'rgba(16, 18, 10, .82)';
+          ctx.fillRect(x - 1, ly - 24, tw + 12, 24);
+          ctx.fillStyle = '#ffb340';
+          ctx.fillText(label, x + 5, ly - 3);
+        }
+      }
+
+      /* ================= デモ（ピンボール方式） =================
+         写真を約4倍に拡大した「窓」を写真の上でゆっくり動かし、
+         端に当たると跳ね返る。検出は窓の中だけにかけるので、
+         物が見えている時だけ反応し、壁や床では静かになる。
+         表示と枠は同じキャンバスに同じ倍率で描くため、枠がずれない */
+      function setupPinball() {
+        var stage = $('stage');
+        var sw = stage.clientWidth, sh = stage.clientHeight;
+        var iw = sampleImg.naturalWidth, ih = sampleImg.naturalHeight;
+        if (!sw || !sh || !iw || !ih) return false;
+        var winH = ih / 4;
+        var winW = winH * (sw / sh);
+        if (winW > iw) { winW = iw / 1.2; winH = winW * (sh / sw); }
+        /* 最初は冷蔵庫（写真の実測位置）の中心から始める */
+        var cx = iw * 0.736, cy = ih * 0.514;
+        var x = Math.min(Math.max(cx - winW / 2, 0), iw - winW);
+        var y = Math.min(Math.max(cy - winH / 2, 0), ih - winH);
+        pin = { x: x, y: y, w: winW, h: winH, vx: -iw * 0.075, vy: ih * 0.045, bvx: iw * 0.075, bvy: ih * 0.045 };
+        cropCanvas.width = Math.max(2, Math.round(winW));
+        cropCanvas.height = Math.max(2, Math.round(winH));
+        return true;
+      }
+
+      /* 跳ね返りのたびに速さを少し変える（緩急）。基準の0.35〜2.2倍の範囲に収める */
+      function bounceSpeed(v, base) {
+        var s = Math.abs(v) * (0.6 + Math.random() * 1.0);
+        s = Math.min(Math.max(s, base * 0.35), base * 2.2);
+        return s;
+      }
+
+      function demoFrame(ts) {
+        if (!running || mode !== 'demo') { demoRaf = 0; return; }
+        if (!pin) {
+          if (!(sampleReady && setupPinball())) {
+            demoRaf = requestAnimationFrame(demoFrame);
+            return;
+          }
+        }
+        var dt = lastFrameAt ? Math.min((ts - lastFrameAt) / 1000, 0.05) : 0.016;
+        lastFrameAt = ts;
+        var iw = sampleImg.naturalWidth, ih = sampleImg.naturalHeight;
+        pin.x += pin.vx * dt;
+        pin.y += pin.vy * dt;
+        if (pin.x <= 0) { pin.x = 0; pin.vx = bounceSpeed(pin.vx, pin.bvx); }
+        if (pin.x >= iw - pin.w) { pin.x = iw - pin.w; pin.vx = -bounceSpeed(pin.vx, pin.bvx); }
+        if (pin.y <= 0) { pin.y = 0; pin.vy = bounceSpeed(pin.vy, pin.bvy); }
+        if (pin.y >= ih - pin.h) { pin.y = ih - pin.h; pin.vy = -bounceSpeed(pin.vy, pin.bvy); }
+        drawDemo();
+        demoRaf = requestAnimationFrame(demoFrame);
+      }
+
+      function drawDemo() {
+        var stage = $('stage');
+        var cw = stage.clientWidth, ch = stage.clientHeight;
+        if (!cw || !ch || !pin) return;
+        var cv = $('demoCanvas');
+        if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+        var ctx = cv.getContext('2d');
+        ctx.drawImage(sampleImg, pin.x, pin.y, pin.w, pin.h, 0, 0, cw, ch);
+        /* 枠は切り取り座標をそのまま画面の倍率に直して描く（写真と同じ面） */
+        var sx = cw / pin.w, sy = ch / pin.h;
+        ctx.lineWidth = 3;
+        ctx.font = '700 17px sans-serif';
+        ctx.textBaseline = 'bottom';
+        for (var i = 0; i < predictions.length; i++) {
+          var p = predictions[i];
+          var x = p.bbox[0] * sx;
+          var y = p.bbox[1] * sy;
+          var w = p.bbox[2] * sx;
+          var h = p.bbox[3] * sy;
           var label = jaLabel(p.class) + ' ' + Math.round(p.score * 100) + '%';
           ctx.strokeStyle = '#ffb340';
           ctx.strokeRect(x, y, w, h);
@@ -523,10 +631,12 @@
       /* 停止処理（「停止」と「＜ もどる」の共通）。止めたことを開始画面に表示する */
       function stopRun() {
         running = false; mode = null;
+        if (demoRaf) { cancelAnimationFrame(demoRaf); demoRaf = 0; }
+        pin = null; lastFrameAt = 0;
         if (stream) { stream.getTracks().forEach(function (tr) { tr.stop(); }); stream = null; }
         if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
         predictions = []; lastMs = 0; fpsEma = 0; lastCycleAt = 0;
-        video.style.display = 'none'; sampleImg.style.display = 'none';
+        video.style.display = 'none'; sampleImg.style.display = 'none'; $('demoCanvas').style.display = 'none';
         var ctx = overlay.getContext('2d');
         ctx.clearRect(0, 0, overlay.width, overlay.height);
         showStart('停止しました');
@@ -586,7 +696,7 @@
           return video.play();
         }).then(function () {
           mode = 'cam'; running = true;
-          video.style.display = 'block'; sampleImg.style.display = 'none';
+          video.style.display = 'block'; sampleImg.style.display = 'none'; $('demoCanvas').style.display = 'none';
           predictions = []; lastCycleAt = 0; fpsEma = 0;
           showRun();
           requestWakeLock();
@@ -601,12 +711,15 @@
 
       bindTap($('btnStartDemo'), function () {
         mode = 'demo'; running = true;
-        video.style.display = 'none'; sampleImg.style.display = 'block';
+        video.style.display = 'none'; sampleImg.style.display = 'none'; $('demoCanvas').style.display = 'block';
         predictions = []; lastCycleAt = 0; fpsEma = 0;
+        pin = null; lastFrameAt = 0;
         showRun();
         requestWakeLock();
         loadModel();
         $('startStatus').textContent = '';
+        if (sampleReady) setupPinball();
+        if (!demoRaf) demoRaf = requestAnimationFrame(demoFrame);
         detectLoop();
       });
 
@@ -619,7 +732,15 @@
         stopRun();
       });
 
-      window.addEventListener('resize', function () { if (running) drawOverlay(); });
+      window.addEventListener('resize', function () {
+        if (!running) return;
+        if (mode === 'cam') drawOverlay();
+        else if (mode === 'demo' && pin) {
+          var iw = sampleImg.naturalWidth, ih = sampleImg.naturalHeight;
+          pin.x = Math.min(Math.max(pin.x, 0), Math.max(iw - pin.w, 0));
+          pin.y = Math.min(Math.max(pin.y, 0), Math.max(ih - pin.h, 0));
+        }
+      });
 
       /* ページを開いた時点でAIの読み込みを始めておく（待ち時間を短くするため） */
       loadModel();
