@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<link rel="mask-icon" href="mask-icon.svg" color="#101418">
+<meta name="theme-color" content="#101418">
+    <title>システム1を使って画像解析してみた（体験ページ）</title>
+    <meta name="description" content="心理学の「システム1」（パッと見て直感的に判断する働き）をAIで真似た物体検出を、ブラウザの中で試せる体験ページです。映像はあなたの端末の中だけで処理され、外部に送信されることはありません。" />
+    <meta property="og:title" content="システム1を使って画像解析してみた（体験ページ）" />
+    <meta property="og:description" content="パッと見て何があるか分かる働き「システム1」をAIで真似た物体検出を、ブラウザで体験できます。映像は端末の中だけで処理されます。" />
+    <meta property="og:image" content="https://sikasin.github.io/system1-test/ogp.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://sikasin.github.io/system1-test/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <style>
+      button, [role="button"], select, summary, input:not([type="checkbox"], [type="radio"]) { min-height: 2rem; }
+
+      :root {
+        --bg: #101418;
+        --panel: #1b2129;
+        --panel-2: #242d38;
+        --ink: #f2f5f8;
+        --ink-dim: #aeb9c4;
+        --line: #39434f;
+        --accent: #ffb340;
+        --safe: #35c163;
+        --danger: #ff3b30;
+        --btn: #2b3542;
+        --btn-ink: #f2f5f8;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #eef1f4;
+          --panel: #ffffff;
+          --panel-2: #e4e9ee;
+          --ink: #141a20;
+          --ink-dim: #4c5866;
+          --line: #c3ccd4;
+          --btn: #dde4ea;
+          --btn-ink: #141a20;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN",
+          "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+        -webkit-text-size-adjust: 100%;
+      }
+
+      /* ---------- start screen ---------- */
+      #startScreen {
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 20px 18px calc(28px + env(safe-area-inset-bottom));
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      #startScreen h1 {
+        font-size: 1.55rem;
+        line-height: 1.35;
+        margin: 6px 0 0;
+        font-weight: 800;
+        letter-spacing: .01em;
+      }
+      #startScreen .lead {
+        margin: 0;
+        font-size: 1.02rem;
+        line-height: 1.75;
+        color: var(--ink-dim);
+      }
+      #startScreen .lead strong { color: var(--ink); }
+      .privacyNotice {
+        border: 2px solid var(--safe);
+        border-radius: 14px;
+        padding: 14px 18px;
+        background: color-mix(in srgb, var(--safe) 10%, var(--panel));
+      }
+      .privacyNotice .privacyTitle {
+        margin: 0 0 6px;
+        font-size: 1.18rem;
+        font-weight: 800;
+        line-height: 1.5;
+      }
+      .privacyNotice p {
+        margin: 0;
+        font-size: .98rem;
+        line-height: 1.75;
+      }
+      .howto {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px 18px;
+      }
+      .howto h2 {
+        font-size: 1rem;
+        margin: 0 0 10px;
+        font-weight: 700;
+      }
+      .howto ul {
+        margin: 0;
+        padding-left: 1.25em;
+        line-height: 1.85;
+        font-size: .98rem;
+      }
+      .startBtns { display: flex; flex-direction: column; gap: 12px; }
+      .bigBtn {
+        appearance: none;
+        border: 0;
+        border-radius: 16px;
+        padding: 20px 16px;
+        font-size: 1.3rem;
+        font-weight: 800;
+        cursor: pointer;
+        min-height: 68px;
+        width: 100%;
+      }
+      .bigBtn.primary { background: var(--accent); color: #1a1206; }
+      .bigBtn.secondary { background: var(--btn); color: var(--btn-ink); border: 1px solid var(--line); }
+      .bigBtn:disabled { opacity: .55; }
+      #startStatus {
+        min-height: 1.6em;
+        font-size: .98rem;
+        color: var(--ink-dim);
+        text-align: center;
+        line-height: 1.6;
+      }
+
+      /* ---------- running view ---------- */
+      #runView {
+        position: fixed;
+        inset: 0;
+        display: none;
+        background: #000;
+        flex-direction: column;
+      }
+      #runView.on { display: flex; }
+      #runStatus {
+        padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+        background: var(--panel);
+        color: var(--ink);
+        font-size: 1.05rem;
+        font-weight: 700;
+        line-height: 1.4;
+        text-align: center;
+      }
+      #stage {
+        position: relative;
+        flex: 1;
+        overflow: hidden;
+        background: #000;
+      }
+      #cam, #sampleImg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: none;
+      }
+      #overlay {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+      /* 映像左上の「＜ もどる」（常時表示） */
+      #btnBack {
+        position: absolute;
+        top: calc(10px + env(safe-area-inset-top, 0px));
+        left: 12px;
+        z-index: 6;
+        pointer-events: auto;
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, .45);
+        background: rgba(8, 10, 12, .72);
+        color: #fff;
+        border-radius: 999px;
+        padding: 10px 16px;
+        min-height: 44px;
+        font-size: .95rem;
+        font-weight: 700;
+        line-height: 1.2;
+        cursor: pointer;
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+      }
+      #btnBack:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+      /* 映像左下の「停止」（常時表示・大きく赤く） */
+      #btnStop {
+        position: absolute;
+        left: 12px;
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        z-index: 6;
+        pointer-events: auto;
+        appearance: none;
+        border: 2px solid #ff8a7a;
+        background: #c62d1f;
+        color: #fff;
+        border-radius: 14px;
+        padding: 14px 26px;
+        min-height: 56px;
+        font-size: 1.15rem;
+        font-weight: 800;
+        line-height: 1.2;
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, .45);
+      }
+      #btnStop:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+      /* ---------- 数値の表示 ---------- */
+      #readout {
+        display: flex;
+        gap: 8px;
+        padding: 10px 12px;
+        background: rgba(8, 10, 12, .92);
+        color: #e8edf1;
+        font-size: .95rem;
+        line-height: 1.5;
+      }
+      #readout div { flex: 1; min-width: 0; }
+      #readout .k { display: block; font-size: .78rem; color: #9fb0bf; letter-spacing: .06em; }
+      #readout .v { font-weight: 700; font-size: 1.05rem; }
+      /* ---------- 見つけた物の一覧 ---------- */
+      #foundWrap {
+        background: rgba(8, 10, 12, .92);
+        border-top: 1px solid rgba(255, 255, 255, .14);
+        padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
+        max-height: 22vh;
+        overflow-y: auto;
+      }
+      #foundWrap .k { display: block; font-size: .78rem; color: #9fb0bf; letter-spacing: .06em; margin-bottom: 6px; }
+      #foundList { display: flex; flex-wrap: wrap; gap: 8px; }
+      .chip {
+        background: var(--panel-2);
+        color: var(--ink);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: .95rem;
+        font-weight: 700;
+        line-height: 1.3;
+      }
+      .chip .pct { color: var(--accent); font-weight: 700; }
+      #foundEmpty { color: #9fb0bf; font-size: .95rem; }
+      /* タップ補助：二重タップズームによる遅延・誤作動を防ぐ */
+      button { touch-action: manipulation; }
+    </style>
+  </head>
+  <body>
+
+    <!-- ================= start screen ================= -->
+    <main id="startScreen">
+      <h1>システム1を使って画像解析してみた</h1>
+
+      <p class="lead">
+        <strong>「システム1」</strong>は心理学の言葉で、人が<strong>パッと見て直感的に判断する働き</strong>のことです
+        （じっくり考えて判断する働きは「システム2」と呼びます）。
+        道を歩いていて「あ、人がいる」「車が来た」と一瞬で分かる、あの働きです。
+      </p>
+      <p class="lead">
+        このページは、その「パッと見て何があるか分かる」働きをAIで真似た<strong>物体検出</strong>を、
+        あなたのブラウザの中で実際に動かす体験ページです。
+        カメラの映像や写真の中から、人・車・椅子・犬などを探して、枠と名前で示します。
+        この仕組みは、歩行アシストアプリの判定の土台になっています。
+      </p>
+
+      <div class="privacyNotice" role="note">
+        <p class="privacyTitle">映像は端末の中だけで処理されます</p>
+        <p>
+          映像はあなたの端末の中だけで処理され、外部に送信されることはありません。
+          サンプル写真の解析も、端末の中だけで行われます。
+        </p>
+      </div>
+
+      <div class="startBtns">
+        <button class="bigBtn primary" id="btnStartCam" type="button">カメラではじめる</button>
+        <button class="bigBtn secondary" id="btnStartDemo" type="button">デモで見る（カメラなし）</button>
+      </div>
+      <p id="startStatus" role="status"></p>
+
+      <div class="howto">
+        <h2>使い方</h2>
+        <ul>
+          <li>「カメラではじめる」を押すと、カメラの許可ダイアログが出ます。許可すると、カメラに映った物をその場で探します</li>
+          <li>「デモで見る」は、カメラを使わず、サンプル写真で試す形です</li>
+          <li>画面の下には、検出にかかった時間（ミリ秒）と、見つけた物の数、1秒あたりの検出回数が出ます。端末の速さによって変わります</li>
+          <li>AIの読み込みに少し時間がかかります。物によっては見つけられなかったり、間違えたりもします。それも含めて、今の「システム1」の実力です</li>
+        </ul>
+      </div>
+    </main>
+
+    <!-- ================= running view ================= -->
+    <div id="runView" aria-live="off">
+      <div id="runStatus">準備中…</div>
+      <div id="stage">
+        <video id="cam" playsinline muted autoplay></video>
+        <img id="sampleImg" src="sample.jpg" alt="サンプル写真" />
+        <canvas id="overlay"></canvas>
+        <button id="btnBack" type="button" aria-label="開始画面へもどる">＜ もどる</button>
+        <button id="btnStop" type="button">停止</button>
+      </div>
+      <div id="readout">
+        <div><span class="k">検出にかかった時間</span><span class="v" id="roMs">—</span></div>
+        <div><span class="k">見つけた物</span><span class="v" id="roCount">—</span></div>
+        <div><span class="k">検出の速さ</span><span class="v" id="roFps">—</span></div>
+      </div>
+      <div id="foundWrap">
+        <span class="k">見つけた物の一覧</span>
+        <div id="foundList"><span id="foundEmpty">まだ何も見つかっていません</span></div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+    <script>
+      'use strict';
+
+      /* ================= ラベルの日本語化 =================
+         COCO-SSD が返すクラス名（英語）を日本語にする対応表。
+         表に無いクラスは英語のまま表示する */
+      var LABELS_JA = {
+        'person': '人', 'bicycle': '自転車', 'car': '車', 'motorcycle': 'バイク',
+        'airplane': '飛行機', 'bus': 'バス', 'train': '電車', 'truck': 'トラック',
+        'boat': '船', 'traffic light': '信号機', 'fire hydrant': '消火栓',
+        'stop sign': '止まれ標識', 'parking meter': 'パーキングメーター',
+        'bench': 'ベンチ', 'bird': '鳥', 'cat': '猫', 'dog': '犬',
+        'horse': '馬', 'sheep': '羊', 'cow': '牛', 'elephant': 'ゾウ',
+        'bear': 'クマ', 'zebra': 'シマウマ', 'giraffe': 'キリン',
+        'backpack': 'リュック', 'umbrella': '傘', 'handbag': 'ハンドバッグ',
+        'tie': 'ネクタイ', 'suitcase': 'スーツケース', 'frisbee': 'フリスビー',
+        'skis': 'スキー', 'snowboard': 'スノーボード', 'sports ball': 'ボール',
+        'kite': '凧', 'baseball bat': 'バット', 'baseball glove': 'グローブ',
+        'skateboard': 'スケートボード', 'surfboard': 'サーフボード',
+        'tennis racket': 'テニスラケット', 'bottle': 'ボトル',
+        'wine glass': 'ワイングラス', 'cup': 'コップ', 'fork': 'フォーク',
+        'knife': 'ナイフ', 'spoon': 'スプーン', 'bowl': 'ボウル',
+        'banana': 'バナナ', 'apple': 'りんご', 'sandwich': 'サンドイッチ',
+        'orange': 'オレンジ', 'broccoli': 'ブロッコリー', 'carrot': 'にんじん',
+        'hot dog': 'ホットドッグ', 'pizza': 'ピザ', 'donut': 'ドーナツ',
+        'cake': 'ケーキ', 'chair': '椅子', 'couch': 'ソファ',
+        'potted plant': '植木鉢', 'bed': 'ベッド', 'dining table': 'テーブル',
+        'toilet': 'トイレ', 'tv': 'テレビ', 'laptop': 'ノートパソコン',
+        'mouse': 'マウス', 'remote': 'リモコン', 'keyboard': 'キーボード',
+        'cell phone': 'スマートフォン', 'microwave': '電子レンジ',
+        'oven': 'オーブン', 'toaster': 'トースター', 'sink': 'シンク',
+        'refrigerator': '冷蔵庫', 'book': '本', 'clock': '時計',
+        'vase': '花瓶', 'scissors': 'ハサミ', 'teddy bear': 'ぬいぐるみ',
+        'hair drier': 'ドライヤー', 'toothbrush': '歯ブラシ'
+      };
+      function jaLabel(cls) { return LABELS_JA[cls] || cls; }
+
+      /* ================= 状態 ================= */
+      var mode = null;              // 'cam' | 'demo'
+      var running = false;
+      var model = null;
+      var modelState = 'loading';   // 'loading' | 'ready' | 'failed'
+      var stream = null;
+      var wakeLock = null;
+      var sampleReady = false;
+      var predictions = [];         // 直近の検出結果（score 0.5 以上）
+      var lastMs = 0;               // 直近の推論時間（ms）
+      var fpsEma = 0;               // 検出回数/秒の平滑値
+      var lastCycleAt = 0;
+      var detectBusy = false;
+
+      var $ = function (id) { return document.getElementById(id); };
+      var startScreen = $('startScreen'), runView = $('runView');
+      var video = $('cam'), sampleImg = $('sampleImg'), overlay = $('overlay');
+      var runStatus = $('runStatus');
+
+      sampleImg.addEventListener('load', function () { sampleReady = true; });
+
+      /* ================= モデル読み込み ================= */
+      function loadModel() {
+        if (model || modelState === 'failed') return;
+        if (typeof cocoSsd === 'undefined') { modelState = 'failed'; return; }
+        cocoSsd.load({ base: 'lite_mobilenet_v2' }).then(function (m) {
+          model = m; modelState = 'ready';
+          updateRunStatus();
+        }).catch(function () { modelState = 'failed'; updateRunStatus(); });
+      }
+
+      function updateRunStatus() {
+        if (!running) return;
+        if (modelState === 'failed') {
+          runStatus.textContent = 'AIを読み込めませんでした。通信環境を確認して、開き直してください';
+        } else if (modelState !== 'ready') {
+          runStatus.textContent = 'AIを読み込んでいます…';
+        } else {
+          runStatus.textContent = mode === 'cam'
+            ? 'カメラの映像から物を探しています'
+            : 'サンプル写真から物を探しています';
+        }
+      }
+
+      /* ================= 検出ループ =================
+         検出にかかった時間は、model.detect() の前後を performance.now() で
+         挟んで測る（直近1回の推論時間）。検出の速さは、検出が完了した
+         時刻の間隔から「1秒あたり何回検出できたか」を平滑化して出す */
+      function detectLoop() {
+        if (!running) return;
+        var src = mode === 'cam' ? video : sampleImg;
+        var ready = mode === 'cam'
+          ? (video.readyState >= 2 && video.videoWidth > 0)
+          : sampleReady;
+        if (ready && model && !detectBusy) {
+          detectBusy = true;
+          var t0 = performance.now();
+          model.detect(src).then(function (preds) {
+            var t1 = performance.now();
+            lastMs = t1 - t0;
+            if (lastCycleAt > 0) {
+              var iv = t1 - lastCycleAt;
+              if (iv > 0) {
+                var f = 1000 / iv;
+                fpsEma = fpsEma ? fpsEma * 0.7 + f * 0.3 : f;
+              }
+            }
+            lastCycleAt = t1;
+            predictions = [];
+            for (var i = 0; i < preds.length; i++) {
+              if (preds[i].score >= 0.5) predictions.push(preds[i]);
+            }
+            drawOverlay();
+            updateStats();
+          }).catch(function () {}).then(function () { detectBusy = false; });
+        }
+        setTimeout(detectLoop, 60);
+      }
+
+      /* 映像・写真は object-fit: cover で表示されるので、検出枠も
+         同じ拡大率と中心合わせで座標変換して重ねる */
+      function drawOverlay() {
+        var stage = $('stage');
+        var cw = stage.clientWidth, ch = stage.clientHeight;
+        if (!cw || !ch) return;
+        if (overlay.width !== cw || overlay.height !== ch) {
+          overlay.width = cw; overlay.height = ch;
+        }
+        var ctx = overlay.getContext('2d');
+        ctx.clearRect(0, 0, cw, ch);
+        var vw, vh;
+        if (mode === 'cam') { vw = video.videoWidth; vh = video.videoHeight; }
+        else { vw = sampleImg.naturalWidth; vh = sampleImg.naturalHeight; }
+        if (!vw || !vh) return;
+        var scale = Math.max(cw / vw, ch / vh);
+        var ox = (cw - vw * scale) / 2, oy = (ch - vh * scale) / 2;
+        ctx.lineWidth = 3;
+        ctx.font = '700 17px sans-serif';
+        ctx.textBaseline = 'bottom';
+        for (var i = 0; i < predictions.length; i++) {
+          var p = predictions[i];
+          var x = ox + p.bbox[0] * scale;
+          var y = oy + p.bbox[1] * scale;
+          var w = p.bbox[2] * scale;
+          var h = p.bbox[3] * scale;
+          var label = jaLabel(p.class) + ' ' + Math.round(p.score * 100) + '%';
+          ctx.strokeStyle = '#ffb340';
+          ctx.strokeRect(x, y, w, h);
+          var tw = ctx.measureText(label).width;
+          var ly = y - 2 < 24 ? y + 24 : y - 2;
+          ctx.fillStyle = 'rgba(16, 18, 10, .82)';
+          ctx.fillRect(x - 1, ly - 24, tw + 12, 24);
+          ctx.fillStyle = '#ffb340';
+          ctx.fillText(label, x + 5, ly - 3);
+        }
+      }
+
+      function updateStats() {
+        $('roMs').textContent = Math.round(lastMs) + ' ミリ秒';
+        $('roCount').textContent = predictions.length + ' 個';
+        $('roFps').textContent = fpsEma ? '約 ' + fpsEma.toFixed(1) + ' 回/秒' : '—';
+        var list = $('foundList');
+        list.innerHTML = '';
+        if (!predictions.length) {
+          var empty = document.createElement('span');
+          empty.id = 'foundEmpty';
+          empty.textContent = 'まだ何も見つかっていません';
+          list.appendChild(empty);
+          return;
+        }
+        for (var i = 0; i < predictions.length; i++) {
+          var p = predictions[i];
+          var chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.textContent = jaLabel(p.class) + ' ';
+          var pct = document.createElement('span');
+          pct.className = 'pct';
+          pct.textContent = Math.round(p.score * 100) + '%';
+          chip.appendChild(pct);
+          list.appendChild(chip);
+        }
+      }
+
+      /* ================= 画面の切り替え ================= */
+      function showRun() {
+        startScreen.style.display = 'none';
+        runView.className = 'on';
+        updateRunStatus();
+      }
+      function showStart(msg) {
+        runView.className = '';
+        startScreen.style.display = '';
+        if (msg) $('startStatus').textContent = msg;
+      }
+      function requestWakeLock() {
+        if ('wakeLock' in navigator) {
+          navigator.wakeLock.request('screen').then(function (wl) { wakeLock = wl; }).catch(function () {});
+        }
+      }
+
+      /* 停止処理（「停止」と「＜ もどる」の共通）。止めたことを開始画面に表示する */
+      function stopRun() {
+        running = false; mode = null;
+        if (stream) { stream.getTracks().forEach(function (tr) { tr.stop(); }); stream = null; }
+        if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+        predictions = []; lastMs = 0; fpsEma = 0; lastCycleAt = 0;
+        video.style.display = 'none'; sampleImg.style.display = 'none';
+        var ctx = overlay.getContext('2d');
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+        showStart('停止しました');
+      }
+
+      /* ================= タップ配送の二重化 =================
+         iOS（WebKit）でボタンに click が届かない事例への対策として、
+         click と touchend の両方で handler を呼ぶ。touchend では preventDefault で
+         後続の合成 click を抑止し、さらに直近600ms以内の重複呼び出しは無視する。
+         スクロール誤発火ガード：touchstart の位置から 12px を超えて動いていたら
+         スクロール操作とみなして発火しない */
+      function bindTap(el, handler) {
+        if (!el) return;
+        var lastFire = 0;
+        function fire(e) {
+          var now = Date.now();
+          if (now - lastFire < 600) return;
+          lastFire = now;
+          handler.call(el, e);
+        }
+        el.addEventListener('click', function (e) {
+          if (Date.now() - lastFire < 600) { e.stopPropagation(); return; }
+          fire(e);
+        });
+        var startX = null, startY = null;
+        el.addEventListener('touchstart', function (e) {
+          var t = e.touches && e.touches[0];
+          if (t) { startX = t.clientX; startY = t.clientY; }
+          else { startX = startY = null; }
+        }, { passive: true });
+        el.addEventListener('touchend', function (e) {
+          var t = e.changedTouches && e.changedTouches[0];
+          var sx = startX, sy = startY;
+          startX = startY = null;
+          if (t && sx !== null && sy !== null) {
+            var dx = t.clientX - sx, dy = t.clientY - sy;
+            if (Math.sqrt(dx * dx + dy * dy) > 12) return;
+          }
+          if (e.cancelable) e.preventDefault();
+          fire(e);
+        });
+      }
+
+      bindTap($('btnStartCam'), function () {
+        var st = $('startStatus');
+        st.textContent = 'カメラを起動しています…';
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          st.textContent = 'このブラウザではカメラが使えません。Safariで開いて試してください。';
+          return;
+        }
+        navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false
+        }).then(function (s) {
+          stream = s;
+          video.srcObject = s;
+          return video.play();
+        }).then(function () {
+          mode = 'cam'; running = true;
+          video.style.display = 'block'; sampleImg.style.display = 'none';
+          predictions = []; lastCycleAt = 0; fpsEma = 0;
+          showRun();
+          requestWakeLock();
+          loadModel();
+          st.textContent = '';
+          detectLoop();
+        }).catch(function (err) {
+          st.textContent = 'カメラを開始できませんでした（' + (err && err.name ? err.name : 'エラー') +
+            '）。ブラウザのカメラ許可を確認してください。アプリ内ブラウザで許可されない場合は、Safariで開くと使えます。';
+        });
+      });
+
+      bindTap($('btnStartDemo'), function () {
+        mode = 'demo'; running = true;
+        video.style.display = 'none'; sampleImg.style.display = 'block';
+        predictions = []; lastCycleAt = 0; fpsEma = 0;
+        showRun();
+        requestWakeLock();
+        loadModel();
+        $('startStatus').textContent = '';
+        detectLoop();
+      });
+
+      bindTap($('btnStop'), function (e) {
+        e.stopPropagation();
+        stopRun();
+      });
+      bindTap($('btnBack'), function (e) {
+        e.stopPropagation();
+        stopRun();
+      });
+
+      window.addEventListener('resize', function () { if (running) drawOverlay(); });
+
+      /* ページを開いた時点でAIの読み込みを始めておく（待ち時間を短くするため） */
+      loadModel();
+    </script>
+  <script data-goatcounter="https://michihal.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
