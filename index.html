@@ -520,16 +520,17 @@
         var cx = iw * 0.736, cy = ih * 0.514;
         var x = Math.min(Math.max(cx - winW / 2, 0), iw - winW);
         var y = Math.min(Math.max(cy - winH / 2, 0), ih - winH);
-        pin = { x: x, y: y, w: winW, h: winH, vx: -iw * 0.075, vy: ih * 0.045, bvx: iw * 0.075, bvy: ih * 0.045 };
+        pin = { x: x, y: y, w: winW, h: winH, vx: -iw * 0.15, vy: ih * 0.09, bvx: iw * 0.15, bvy: ih * 0.09 };
         cropCanvas.width = Math.max(2, Math.round(winW));
         cropCanvas.height = Math.max(2, Math.round(winH));
         return true;
       }
 
-      /* 跳ね返りのたびに速さを少し変える（緩急）。基準の0.35〜2.2倍の範囲に収める */
+      /* 跳ね返りのたびに速さを変える（緩急、加速寄り）。
+         下限は基準の0.5倍＝初版の基準速度（これより遅くはならない）、上限は基準の2.4倍 */
       function bounceSpeed(v, base) {
-        var s = Math.abs(v) * (0.6 + Math.random() * 1.0);
-        s = Math.min(Math.max(s, base * 0.35), base * 2.2);
+        var s = Math.abs(v) * (0.85 + Math.random() * 0.85);
+        s = Math.min(Math.max(s, base * 0.5), base * 2.4);
         return s;
       }
 
